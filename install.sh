@@ -23,6 +23,7 @@ BIN_DIR="${HOME}/.local/bin"
 DESKTOP_DIR="${HOME}/.local/share/applications"
 ICON_DIR="${HOME}/.local/share/icons/hicolor/512x512/apps"
 APPIMAGE_PATH="${BIN_DIR}/${APPIMAGE_NAME}"
+WRAPPER_PATH="${BIN_DIR}/open-design-wrapper.sh"
 DESKTOP_PATH="${DESKTOP_DIR}/open-design-${NAMESPACE}.desktop"
 ICON_PATH="${ICON_DIR}/open-design-${NAMESPACE}.png"
 
@@ -34,13 +35,14 @@ require() { command -v "$1" >/dev/null 2>&1 || fail "Required command not found:
 
 uninstall() {
   local removed=0
-  for f in "$APPIMAGE_PATH" "$DESKTOP_PATH" "$ICON_PATH"; do
+  for f in "$APPIMAGE_PATH" "$WRAPPER_PATH" "$DESKTOP_PATH" "$ICON_PATH"; do
     if [[ -e "$f" ]]; then
       rm -f -- "$f"
       info "Removed $f"
       removed=1
     fi
   done
+  rm -rf /tmp/open-design-run 2>/dev/null || true
   ((removed)) || info "Nothing installed."
   command -v update-desktop-database >/dev/null 2>&1 && \
     update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
@@ -72,6 +74,48 @@ mkdir -p "$BIN_DIR" "$DESKTOP_DIR" "$ICON_DIR"
 info "Installing AppImage to ${APPIMAGE_PATH}..."
 mv -f "${work_dir}/${ASSET_APPIMAGE}" "$APPIMAGE_PATH"
 
+info "Installing launcher wrapper..."
+# The AppImage's built-in --appimage-extract-and-run always extracts to the same
+# deterministic /tmp/appimage_extracted_<hash> directory. If a run is killed
+# mid-extraction (e.g. /tmp fills up — the tree is ~1.8G), the corrupt tree is
+# silently reused on every later launch and the app dies on missing chunks.
+# The wrapper extracts to a fresh directory and atomically swaps it in instead.
+cat > "$WRAPPER_PATH" <<'WRAPPER'
+#!/usr/bin/env bash
+# Open Design launcher: fresh AppImage extraction with atomic swap.
+set -euo pipefail
+
+APPIMAGE="${OPEN_DESIGN_APPIMAGE:-$HOME/.local/bin/Open-Design.linux.AppImage}"
+BASE="/tmp/open-design-run"
+STAMP="$(date +%s%N)"
+NEW="$BASE/new-$STAMP"
+CUR="$BASE/current"
+OLD="$BASE/old-$STAMP"
+
+[[ -x "$APPIMAGE" ]] || { echo "Open Design AppImage not found at $APPIMAGE" >&2; exit 1; }
+
+# Refuse to extract into a nearly-full /tmp: a truncated tree breaks the app.
+avail_kb="$(df -Pk /tmp | awk 'NR==2 {print $4}')"
+need_kb="$(( $(stat -Lc %s "$APPIMAGE") * 3 / 1024 + 512 * 1024 ))"
+if (( avail_kb < need_kb )); then
+  echo "Not enough space in /tmp (need ~$((need_kb / 1024))M free, have $((avail_kb / 1024))M)." >&2
+  echo "Free /tmp (rm -rf /tmp/open-design-run /tmp/appimage_extracted_*) and retry." >&2
+  exit 1
+fi
+
+mkdir -p "$NEW"
+( cd "$NEW" && "$APPIMAGE" --appimage-extract >/dev/null )
+
+if [[ -d "$CUR" ]]; then
+  mv "$CUR" "$OLD"
+fi
+mv "$NEW/squashfs-root" "$CUR"
+rm -rf "$NEW" "$OLD" "$BASE"/new-* "$BASE"/old-* 2>/dev/null || true
+
+exec env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=linux "$CUR/AppRun" "$@"
+WRAPPER
+chmod +x "$WRAPPER_PATH"
+
 info "Installing icon and menu entry..."
 mv -f "${work_dir}/${ASSET_ICON}" "$ICON_PATH"
 
@@ -81,7 +125,7 @@ Type=Application
 Name=Open Design
 GenericName=Open Design
 Comment=Open Design packaged build
-Exec=env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=${NAMESPACE} ${APPIMAGE_PATH} --appimage-extract-and-run %U
+Exec=${WRAPPER_PATH} %U
 Icon=open-design-${NAMESPACE}
 Categories=Development;Utility;
 StartupWMClass=Open Design
@@ -101,4 +145,4 @@ command -v xdg-mime >/dev/null 2>&1 && \
 
 ok "Installed. 'Open Design' now appears in your app launcher."
 ok "Re-run this script any time to update; your data is not touched."
-ok "First launch can take ~10s (AppImage self-extracts to /tmp)."
+ok "First launch can take ~60s (the launcher extracts the 1.8G AppImage to /tmp); later launches are faster."
