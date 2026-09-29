@@ -81,13 +81,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --store-dir "$GITHUB_WORKSPACE/.pnpm-store"
 
-      # The inner `bash -lc` in the container sources this profile; CI=true
+      # The inner `bash -lc` in the container sources this profile. CI=true
       # makes pnpm non-interactive if it ever needs to relink node_modules
       # (otherwise it aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
+      # npm_execpath points at the standalone pnpm binary so nested pnpm calls
+      # from tools-pack skip `corepack`, which the electronuserland image strips.
       - name: Pre-seed container profile
         run: |
           mkdir -p "$RUNNER_TEMP/tools-pack/.docker-home"
-          printf 'export CI=true\nexport PNPM_HOME=/tmp/pnpm-home\n' \
+          printf 'export CI=true\nexport PNPM_HOME=/tmp/pnpm-home\nexport npm_execpath=/tmp/pnpm\n' \
             > "$RUNNER_TEMP/tools-pack/.docker-home/.bash_profile"
 
       - name: Build AppImage
