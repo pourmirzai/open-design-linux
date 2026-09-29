@@ -26,18 +26,7 @@
    const version = await readPackagedVersion(config);
    const packageVersion = electronBuilderVersionForAppVersion(version);
    const packageJson = {
-@@ -537,6 +556,10 @@
-     version: packageVersion,
-     private: true,
-     main: "main.cjs",
-+    // electron-builder: force its dependency-free node_modules traversal (no
-+    // `pnpm list`), because the lockfile-less hoisted tree defeats the pnpm
-+    // collector and yields an incomplete dependency closure in the package.
-+    packageManager: "traversal",
-     dependencies,
-     description: "Local-first design product: detects your installed code-agent CLI, runs design skills + design systems, streams artifacts into a sandboxed preview.",
-     author: "Open Design Team",
-@@ -547,6 +570,12 @@
+@@ -547,6 +566,12 @@
    };
    await writeFile(paths.assembledPackageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
  
@@ -50,3 +39,26 @@
    await writeFile(paths.assembledMainEntryPath, renderLinuxPackagedMainEntry(), "utf8");
  
    await writeFile(
+@@ -571,6 +596,22 @@
+   );
+ 
+   await runProductionInstall(paths.assembledAppRoot);
++
++  // Written only after the production install: pnpm reads packageManager too
++  // and rejects the electron-builder-only "traversal" value. electron-builder's
++  // appFileCopier always retries collection with the traversal collector when
++  // the lockfile-based collectors return nothing, and a lockfile-less hoisted
++  // tree is exactly that case — the marker forces a complete dependency
++  // closure instead of the npm collector's partial result.
++  const packagedPackageJson = JSON.parse(
++    await readFile(paths.assembledPackageJsonPath, "utf8"),
++  ) as Record<string, unknown>;
++  packagedPackageJson.packageManager = "traversal";
++  await writeFile(
++    paths.assembledPackageJsonPath,
++    `${JSON.stringify(packagedPackageJson, null, 2)}\n`,
++    "utf8",
++  );
+ }
+ 
+ async function writeLinuxAppImageAppRun(paths: LinuxPaths): Promise<void> {
