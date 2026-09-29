@@ -19,7 +19,7 @@
 +    overrideYamlLines.push(`  "${name}": "${spec}"`);
 +  }
 +  overrideYamlLines.push("onlyBuiltDependencies:");
-+  for (const dep of ["better-sqlite3", "node-pty", "core-js", "esbuild", "protobufjs", "sharp"]) {
++  for (const dep of ["better-sqlite3", "core-js", "esbuild", "protobufjs", "sharp"]) {
 +    overrideYamlLines.push(`  - ${dep}`);
 +  }
 +
