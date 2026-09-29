@@ -3,7 +3,7 @@
 @@ -1,5 +1,5 @@
  import { execFile, spawn } from "node:child_process";
 -import { access, chmod, cp, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-+import { access, chmod, copyFile, cp, exists, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
++import { access, chmod, copyFile, cp, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
  import { homedir } from "node:os";
  import { basename, dirname, join, posix } from "node:path";
  import { promisify } from "node:util";
@@ -53,7 +53,7 @@
 +  const mirrorRoot = join(paths.assembledAppRoot, "node_modules");
 +  for (const entry of WEB_SERVER_SOURCE_INPUTS) {
 +    const source = join(workspaceRoot, entry.from);
-+    if (!(await exists(source))) continue;
++    if (!(await access(source).then(() => true, () => false))) continue;
 +    const destination = join(mirrorRoot, entry.to);
 +    await mkdir(dirname(destination), { recursive: true });
 +    await copyFile(source, destination);
