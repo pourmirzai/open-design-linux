@@ -7,7 +7,7 @@
  import { homedir } from "node:os";
  import { basename, dirname, join, posix } from "node:path";
  import { promisify } from "node:util";
-@@ -509,6 +509,53 @@
+@@ -509,6 +509,71 @@
      requireBundled: config.requireVelaCli,
      resourceRoot: paths.resourceRoot,
    });
@@ -19,49 +19,67 @@
 +// runtime. Its module scope computes WORKSPACE_ROOT as the grandparent of the
 +// installed web package (node_modules/) and reads the CMS host-release
 +// fingerprint inputs at <WORKSPACE_ROOT>/apps/web/... and
-+// <WORKSPACE_ROOT>/packages/contracts/... — a layout that only exists in the
-+// build workspace, not inside an assembled package. Mirror those exact files to
-+// the paths the config computes so the config loads instead of crashing the web
-+// sidecar (and with it the whole packaged boot). Content is irrelevant: the
-+// build-time fingerprint embedded in .next is authoritative; only the reads
++// <WORKSPACE_ROOT>/packages/contracts/... — paths that only exist in the build
++// workspace, not inside an assembled package, so the config throws ENOENT and
++// takes the web sidecar (and the whole packaged boot) down with it.
++//
++// Fix inside the packaged @open-design/web directory (which electron-builder
++// copies wholesale): copy every fingerprint input under .od-cms-inputs/ and
++// rewrite the config's read to resolve from WEB_ROOT. Content is irrelevant —
++// the build-time fingerprint baked into .next is authoritative — only the reads
 +// must succeed.
-+const WEB_SERVER_SOURCE_INPUTS = [
-+  { from: join("apps", "web", "app", "layout.tsx"), to: join("apps", "web", "app", "layout.tsx") },
-+  { from: join("apps", "web", "src", "App.tsx"), to: join("apps", "web", "src", "App.tsx") },
-+  { from: join("apps", "web", "src", "components", "EntryNavRail.tsx"), to: join("apps", "web", "src", "components", "EntryNavRail.tsx") },
-+  { from: join("apps", "web", "src", "components", "EntryShell.tsx"), to: join("apps", "web", "src", "components", "EntryShell.tsx") },
-+  { from: join("apps", "web", "src", "components", "touchpoint-component.ts"), to: join("apps", "web", "src", "components", "touchpoint-component.ts") },
-+  { from: join("apps", "web", "src", "components", "touchpoint-lifecycle.ts"), to: join("apps", "web", "src", "components", "touchpoint-lifecycle.ts") },
-+  { from: join("apps", "web", "src", "components", "touchpoint-static-actions.ts"), to: join("apps", "web", "src", "components", "touchpoint-static-actions.ts") },
-+  { from: join("apps", "web", "src", "components", "touchpoint-navigation.ts"), to: join("apps", "web", "src", "components", "touchpoint-navigation.ts") },
-+  { from: join("apps", "web", "src", "components", "TestCampaignModal.tsx"), to: join("apps", "web", "src", "components", "TestCampaignModal.tsx") },
-+  { from: join("apps", "web", "src", "components", "TestCampaignModal.module.css"), to: join("apps", "web", "src", "components", "TestCampaignModal.module.css") },
-+  { from: join("apps", "web", "src", "components", "ProductionCampaignModal.tsx"), to: join("apps", "web", "src", "components", "ProductionCampaignModal.tsx") },
-+  { from: join("apps", "web", "src", "components", "ProductionCampaignBadge.tsx"), to: join("apps", "web", "src", "components", "ProductionCampaignBadge.tsx") },
-+  { from: join("apps", "web", "src", "components", "ProductionCampaignBadge.module.css"), to: join("apps", "web", "src", "components", "ProductionCampaignBadge.module.css") },
-+  { from: join("apps", "web", "src", "components", "ProductionCampaignHover.tsx"), to: join("apps", "web", "src", "components", "ProductionCampaignHover.tsx") },
-+  { from: join("apps", "web", "src", "components", "HoverTouchpointOverlay.tsx"), to: join("apps", "web", "src", "components", "HoverTouchpointOverlay.tsx") },
-+  { from: join("apps", "web", "src", "components", "HoverTouchpointOverlay.module.css"), to: join("apps", "web", "src", "components", "HoverTouchpointOverlay.module.css") },
-+  { from: join("apps", "web", "src", "components", "production-touchpoint-loader.ts"), to: join("apps", "web", "src", "components", "production-touchpoint-loader.ts") },
-+  { from: join("packages", "contracts", "src", "touchpoint-component-v2.ts"), to: join("packages", "contracts", "src", "touchpoint-component-v2.ts") },
++const CMS_FINGERPRINT_INPUTS = [
++  "apps/web/app/layout.tsx",
++  "apps/web/src/App.tsx",
++  "apps/web/src/components/EntryNavRail.tsx",
++  "apps/web/src/components/EntryShell.tsx",
++  "apps/web/src/components/touchpoint-component.ts",
++  "apps/web/src/components/touchpoint-lifecycle.ts",
++  "apps/web/src/components/touchpoint-static-actions.ts",
++  "apps/web/src/components/touchpoint-navigation.ts",
++  "apps/web/src/components/TestCampaignModal.tsx",
++  "apps/web/src/components/TestCampaignModal.module.css",
++  "apps/web/src/components/ProductionCampaignModal.tsx",
++  "apps/web/src/components/ProductionCampaignBadge.tsx",
++  "apps/web/src/components/ProductionCampaignBadge.module.css",
++  "apps/web/src/components/ProductionCampaignHover.tsx",
++  "apps/web/src/components/HoverTouchpointOverlay.tsx",
++  "apps/web/src/components/HoverTouchpointOverlay.module.css",
++  "apps/web/src/components/production-touchpoint-loader.ts",
++  "packages/contracts/src/touchpoint-component-v2.ts",
 +] as const;
 +
 +async function copyWebServerSourceInputs(
 +  workspaceRoot: string,
 +  paths: LinuxPaths,
 +): Promise<void> {
-+  const mirrorRoot = join(paths.assembledAppRoot, "node_modules");
-+  for (const entry of WEB_SERVER_SOURCE_INPUTS) {
-+    const source = join(workspaceRoot, entry.from);
++  const webPackageRoot = join(paths.assembledAppRoot, "node_modules", "@open-design", "web");
++  const inputsRoot = join(webPackageRoot, ".od-cms-inputs");
++  await mkdir(inputsRoot, { recursive: true });
++  for (const relative of CMS_FINGERPRINT_INPUTS) {
++    const source = join(workspaceRoot, relative);
 +    if (!(await access(source).then(() => true, () => false))) continue;
-+    const destination = join(mirrorRoot, entry.to);
-+    await mkdir(dirname(destination), { recursive: true });
++    const destination = join(inputsRoot, `${relative.replaceAll("/", "__")}`);
 +    await copyFile(source, destination);
++  }
++  const configPath = join(webPackageRoot, "next.config.ts");
++  const config = await readFile(configPath, "utf8");
++  const rewritten = config
++    .replaceAll(
++      "readFileSync(resolve(WORKSPACE_ROOT, file))",
++      "readFileSync(resolve(WEB_ROOT, '.od-cms-inputs', file.replaceAll('/', '__')))",
++    )
++    .replaceAll(
++      "existsSync(resolve(WEB_ROOT, 'src/components/touchpoint-component.ts'))",
++      "existsSync(resolve(WEB_ROOT, '.od-cms-inputs', 'apps__web__src__components__touchpoint-component.ts'))",
++    );
++  if (rewritten !== config) {
++    await writeFile(configPath, rewritten, "utf8");
 +  }
  }
  
  // --- Step 4: writeAssembledApp helper ---
-@@ -530,6 +577,25 @@
+@@ -530,6 +595,25 @@
      dependencies[tarball.packageName] = `file:${join(paths.tarballsRoot, tarball.fileName)}`;
    }
  
@@ -87,7 +105,7 @@
    const version = await readPackagedVersion(config);
    const packageVersion = electronBuilderVersionForAppVersion(version);
    const packageJson = {
-@@ -547,6 +613,12 @@
+@@ -547,6 +631,12 @@
    };
    await writeFile(paths.assembledPackageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
  
@@ -100,7 +118,7 @@
    await writeFile(paths.assembledMainEntryPath, renderLinuxPackagedMainEntry(), "utf8");
  
    await writeFile(
-@@ -571,6 +643,22 @@
+@@ -571,6 +661,22 @@
    );
  
    await runProductionInstall(paths.assembledAppRoot);
