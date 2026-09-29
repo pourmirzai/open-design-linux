@@ -7,13 +7,10 @@
  import { homedir } from "node:os";
  import { basename, dirname, join, posix } from "node:path";
  import { promisify } from "node:util";
-@@ -509,6 +509,71 @@
-     requireBundled: config.requireVelaCli,
-     resourceRoot: paths.resourceRoot,
+@@ -511,6 +511,70 @@
    });
-+  await copyWebServerSourceInputs(config.workspaceRoot, paths);
-+}
-+
+ }
+ 
 +// The web sidecar runs Next.js in server output mode on Linux (config/index.ts
 +// forces "server"), so the packaged web package's next.config.ts is re-loaded at
 +// runtime. Its module scope computes WORKSPACE_ROOT as the grandparent of the
@@ -76,10 +73,12 @@
 +  if (rewritten !== config) {
 +    await writeFile(configPath, rewritten, "utf8");
 +  }
- }
- 
++}
++
  // --- Step 4: writeAssembledApp helper ---
-@@ -530,6 +595,25 @@
+ 
+ async function writeAssembledApp(
+@@ -530,6 +594,25 @@
      dependencies[tarball.packageName] = `file:${join(paths.tarballsRoot, tarball.fileName)}`;
    }
  
@@ -105,7 +104,7 @@
    const version = await readPackagedVersion(config);
    const packageVersion = electronBuilderVersionForAppVersion(version);
    const packageJson = {
-@@ -547,6 +631,12 @@
+@@ -547,6 +630,12 @@
    };
    await writeFile(paths.assembledPackageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
  
@@ -118,7 +117,7 @@
    await writeFile(paths.assembledMainEntryPath, renderLinuxPackagedMainEntry(), "utf8");
  
    await writeFile(
-@@ -571,6 +661,22 @@
+@@ -571,6 +660,24 @@
    );
  
    await runProductionInstall(paths.assembledAppRoot);
@@ -138,6 +137,8 @@
 +    `${JSON.stringify(packagedPackageJson, null, 2)}\n`,
 +    "utf8",
 +  );
++
++  await copyWebServerSourceInputs(config.workspaceRoot, paths);
  }
  
  async function writeLinuxAppImageAppRun(paths: LinuxPaths): Promise<void> {
