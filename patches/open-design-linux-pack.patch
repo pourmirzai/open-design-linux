@@ -7,10 +7,10 @@
  import { homedir } from "node:os";
  import { basename, dirname, join, posix } from "node:path";
  import { promisify } from "node:util";
-@@ -510,6 +510,54 @@
+@@ -509,6 +509,53 @@
+     requireBundled: config.requireVelaCli,
      resourceRoot: paths.resourceRoot,
    });
- }
 +  await copyWebServerSourceInputs(config.workspaceRoot, paths);
 +}
 +
@@ -58,11 +58,10 @@
 +    await mkdir(dirname(destination), { recursive: true });
 +    await copyFile(source, destination);
 +  }
-+}
+ }
  
  // --- Step 4: writeAssembledApp helper ---
- 
-@@ -530,6 +578,25 @@
+@@ -530,6 +577,25 @@
      dependencies[tarball.packageName] = `file:${join(paths.tarballsRoot, tarball.fileName)}`;
    }
  
@@ -88,7 +87,7 @@
    const version = await readPackagedVersion(config);
    const packageVersion = electronBuilderVersionForAppVersion(version);
    const packageJson = {
-@@ -547,6 +614,12 @@
+@@ -547,6 +613,12 @@
    };
    await writeFile(paths.assembledPackageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
  
@@ -101,7 +100,7 @@
    await writeFile(paths.assembledMainEntryPath, renderLinuxPackagedMainEntry(), "utf8");
  
    await writeFile(
-@@ -571,6 +644,22 @@
+@@ -571,6 +643,22 @@
    );
  
    await runProductionInstall(paths.assembledAppRoot);
