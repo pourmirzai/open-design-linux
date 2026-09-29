@@ -1,0 +1,135 @@
+name: Build Open Design Linux
+
+# Builds an installable Linux AppImage from upstream nexu-io/open-design and
+# publishes it on a rolling "linux-latest" release in this repository.
+#
+# Triggers:
+#   - manual (optionally pinning an upstream tag/branch)
+#   - daily schedule, which picks up the newest upstream release tag
+#
+# The build uses the upstream release-lane recipe:
+#   tools-pack linux build --portable --to appimage --containerized
+# plus --require-vela-cli so the bundled Vela CLI (needed for cloud login)
+# is a hard build failure if missing, not a silent skip.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream tag or branch (empty = latest upstream release tag)"
+        required: false
+        default: ""
+  schedule:
+    # Daily at 04:00 UTC — picks up new upstream releases within a day.
+    - cron: "0 4 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-linux
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_REPO: nexu-io/open-design
+  RELEASE_TAG: linux-latest
+  NAMESPACE: linux
+
+jobs:
+  build:
+    name: Build linux x64 AppImage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve upstream ref
+        id: ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$UPSTREAM_REF" ]]; then
+            ref="$UPSTREAM_REF"
+          else
+            ref="$(gh api "repos/${UPSTREAM_REPO}/releases/latest" --jq .tag_name)"
+          fi
+          version="${ref#open-design-v}"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building upstream ref: $ref (version $version)"
+
+      - name: Checkout upstream source
+        uses: actions/checkout@v6.0.2
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.33.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build AppImage
+        env:
+          VERSION: ${{ steps.ref.outputs.version }}
+        run: |
+          set -euo pipefail
+          pnpm exec tools-pack linux build \
+            --dir "$RUNNER_TEMP/tools-pack" \
+            --namespace "$NAMESPACE" \
+            --portable \
+            --app-version "$VERSION" \
+            --to appimage \
+            --containerized \
+            --require-vela-cli \
+            --json 2>&1 | tee "$RUNNER_TEMP/tools-pack-build.log"
+
+      - name: Collect artifacts
+        env:
+          VERSION: ${{ steps.ref.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          appimage="$(find "$RUNNER_TEMP/tools-pack" -type f -name '*.AppImage' | head -n 1)"
+          [[ -n "$appimage" ]] || { echo "No AppImage produced" >&2; exit 1; }
+          mv "$appimage" "dist/Open-Design-linux-x64.AppImage"
+          cp tools/pack/resources/linux/icon.png dist/open-design-icon.png
+          chmod +x dist/Open-Design-linux-x64.AppImage
+          ls -lh dist/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Open-Design-linux-x64-${{ steps.ref.outputs.version }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ref.outputs.version }}
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" dist/* \
+            --title "Open Design Linux $VERSION" \
+            --notes "Automated Linux (x64) build of [upstream $REF](https://github.com/${UPSTREAM_REPO}/releases/tag/${REF}).
+
+          - AppImage: \`Open-Design-linux-x64.AppImage\` (install with \`install.sh\` from this repository)
+          - Bundles the Vela CLI, so cloud login works out of the box.
+
+          Install/update:
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.sh | bash
+          \`\`\`"
