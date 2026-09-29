@@ -102,10 +102,12 @@ jobs:
       # (otherwise it aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
       # npm_execpath points at the standalone pnpm binary so nested pnpm calls
       # from tools-pack skip `corepack`, which the electronuserland image strips.
+      # /tmp on PATH lets electron-builder's node-module collector find `pnpm`
+      # (the standalone binary lives at /tmp/pnpm).
       - name: Pre-seed container profile
         run: |
           mkdir -p "$RUNNER_TEMP/tools-pack/.docker-home"
-          printf 'export CI=true\nexport PNPM_HOME=/tmp/pnpm-home\nexport npm_execpath=/tmp/pnpm\n' \
+          printf 'export CI=true\nexport PNPM_HOME=/tmp/pnpm-home\nexport npm_execpath=/tmp/pnpm\nexport PATH="/tmp:$PATH"\n' \
             > "$RUNNER_TEMP/tools-pack/.docker-home/.bash_profile"
 
       - name: Build AppImage
