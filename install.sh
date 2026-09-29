@@ -55,14 +55,14 @@ require install
 
 [[ "$(uname -m)" == "x86_64" ]] || fail "This build is x86_64 only (found: $(uname -m))."
 
-base_url="https://github.com/${REPO}/releases/${RELEASE_TAG}/download"
+base_url="https://github.com/${REPO}/releases/download/${RELEASE_TAG}"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
 info "Downloading latest build from github.com/${REPO} (${RELEASE_TAG})..."
-curl -fL --retry 3 --retry-delay 2 -o "${work_dir}/${ASSET_APPIMAGE}" \
+curl -fL --retry 5 --retry-delay 2 --retry-all-errors -o "${work_dir}/${ASSET_APPIMAGE}" \
   "${base_url}/${ASSET_APPIMAGE}" || fail "Download failed. Has the first Actions build finished?"
-curl -fL --retry 3 --retry-delay 2 -o "${work_dir}/${ASSET_ICON}" \
+curl -fL --retry 5 --retry-delay 2 --retry-all-errors -o "${work_dir}/${ASSET_ICON}" \
   "${base_url}/${ASSET_ICON}" || fail "Icon download failed."
 
 chmod +x "${work_dir}/${ASSET_APPIMAGE}"
