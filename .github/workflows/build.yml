@@ -64,6 +64,22 @@ jobs:
           ref: ${{ steps.ref.outputs.ref }}
           fetch-depth: 1
 
+      - name: Checkout CI repo (patches)
+        uses: actions/checkout@v6.0.2
+        with:
+          repository: ${{ github.repository }}
+          path: _ci
+
+      # Upstream's assembled-app production install resolves transitive
+      # @open-design/* deps from the npm registry (they are not published) and
+      # blocks native build scripts. This patch makes tools-pack write a
+      # pnpm-workspace.yaml into the assembled app pinning internal packages to
+      # their packed tarballs and allowing native builds. Re-generate against a
+      # new upstream tag with: patches/open-design-linux-pack.patch
+      - name: Apply packaging patch
+        run: |
+          git apply --verbose _ci/patches/open-design-linux-pack.patch
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
         with:

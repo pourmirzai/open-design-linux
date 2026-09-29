@@ -1,0 +1,41 @@
+--- a/tools/pack/src/linux.ts
++++ b/tools/pack/src/linux.ts
+@@ -530,6 +530,25 @@
+     dependencies[tarball.packageName] = `file:${join(paths.tarballsRoot, tarball.fileName)}`;
+   }
+ 
++  // pnpm resolves transitive dependencies of file: tarballs against the npm
++  // registry, and the internal @open-design/* packages are not published, so a
++  // hoisted production install would 404. Write a workspace config whose
++  // overrides pin every internal package to its packed tarball, and whose
++  // onlyBuiltDependencies keeps native runtime deps (better-sqlite3, node-pty)
++  // building despite pnpm 10's default script block.
++  const overrides: Record<string, string> = {};
++  for (const tarball of packed) {
++    overrides[tarball.packageName] = `file:${join(paths.tarballsRoot, tarball.fileName)}`;
++  }
++  const overrideYamlLines = ["overrides:"];
++  for (const [name, spec] of Object.entries(overrides)) {
++    overrideYamlLines.push(`  "${name}": "${spec}"`);
++  }
++  overrideYamlLines.push("onlyBuiltDependencies:");
++  for (const dep of ["better-sqlite3", "node-pty", "core-js", "esbuild", "protobufjs", "sharp"]) {
++    overrideYamlLines.push(`  - ${dep}`);
++  }
++
+   const version = await readPackagedVersion(config);
+   const packageVersion = electronBuilderVersionForAppVersion(version);
+   const packageJson = {
+@@ -547,6 +566,12 @@
+   };
+   await writeFile(paths.assembledPackageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
+ 
++  await writeFile(
++    join(paths.assembledAppRoot, "pnpm-workspace.yaml"),
++    `${overrideYamlLines.join("\n")}\n`,
++    "utf8",
++  );
++
+   await writeFile(paths.assembledMainEntryPath, renderLinuxPackagedMainEntry(), "utf8");
+ 
+   await writeFile(
