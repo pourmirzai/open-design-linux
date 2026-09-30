@@ -94,6 +94,20 @@ OLD="$BASE/old-$STAMP"
 
 [[ -x "$APPIMAGE" ]] || { echo "Open Design AppImage not found at $APPIMAGE" >&2; exit 1; }
 
+intact() {
+  local dir="$1"
+  [[ -x "$dir/AppRun" ]] || return 1
+  [[ -s "$dir/snapshot_blob.bin" ]] || return 1
+  [[ -s "$dir/v8_context_snapshot.bin" ]] || return 1
+  [[ -s "$dir/Open Design" ]] || return 1
+  return 0
+}
+
+if intact "$CUR"; then
+  exec env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=linux \
+    "$CUR/AppRun" --no-sandbox "$@"
+fi
+
 # Refuse to extract into a nearly-full /tmp: a truncated tree breaks the app.
 avail_kb="$(df -Pk /tmp | awk 'NR==2 {print $4}')"
 need_kb="$(( $(stat -Lc %s "$APPIMAGE") * 3 / 1024 + 512 * 1024 ))"
@@ -105,6 +119,11 @@ fi
 
 mkdir -p "$NEW"
 ( cd "$NEW" && "$APPIMAGE" --appimage-extract >/dev/null )
+if ! intact "$NEW/squashfs-root"; then
+  rm -rf "$NEW"
+  echo "Extraction produced an incomplete tree (disk full?). Free /tmp and retry." >&2
+  exit 1
+fi
 
 if [[ -d "$CUR" ]]; then
   mv "$CUR" "$OLD"
@@ -112,7 +131,8 @@ fi
 mv "$NEW/squashfs-root" "$CUR"
 rm -rf "$NEW" "$OLD" "$BASE"/new-* "$BASE"/old-* 2>/dev/null || true
 
-exec env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=linux "$CUR/AppRun" "$@"
+exec env -u ELECTRON_RUN_AS_NODE OD_PACKAGED_NAMESPACE=linux \
+  "$CUR/AppRun" --no-sandbox "$@"
 WRAPPER
 chmod +x "$WRAPPER_PATH"
 
