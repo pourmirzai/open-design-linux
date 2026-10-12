@@ -136,6 +136,9 @@ jobs:
           mv "$appimage" "dist/Open-Design-linux-x64.AppImage"
           cp tools/pack/resources/linux/icon.png dist/open-design-icon.png
           chmod +x dist/Open-Design-linux-x64.AppImage
+          # Tiny version marker so install.sh can compare installed vs latest
+          # without downloading the ~1.8G AppImage first.
+          printf '%s\n' "$VERSION" > dist/VERSION
           ls -lh dist/
 
       - name: Upload build artifact

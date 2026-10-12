@@ -18,13 +18,32 @@ install needed.
 curl -fsSL https://raw.githubusercontent.com/pourmirzai/open-design-linux/main/install.sh | bash
 ```
 
-Or clone and run `./install.sh`. Re-running the script updates the app in
-place; user data lives under the app's XDG config/data roots and is never
-touched.
+Or clone and run `./install.sh`. The script is version-aware:
+
+- **Not installed** → installs the latest build.
+- **Already latest** → prints `already installed` and exits without
+  re-downloading the ~1.8G AppImage.
+- **Update available** → asks for confirmation before downloading.
+  Pass `--yes` (or set `OPEN_DESIGN_ASSUME_YES=1`) to update
+  non-interactively, e.g.
+  `curl -fsSL .../install.sh | bash -s -- --yes`.
+
+Check without changing anything (exit 0 = up to date, 1 = update
+available or not installed):
+
+```bash
+./install.sh --check
+```
+
+Force a reinstall even when already latest: `./install.sh --force`.
+
+Re-running the script updates the app in place; user data lives under the
+app's XDG config/data roots and is never touched.
 
 This installs:
 
 - `~/.local/bin/Open-Design.linux.AppImage`
+- `~/.local/bin/Open-Design.linux.version` (installed version marker)
 - `~/.local/share/applications/open-design-linux.desktop` (launcher entry,
   registers the `od://` scheme)
 - `~/.local/share/icons/hicolor/512x512/apps/open-design-linux.png`
