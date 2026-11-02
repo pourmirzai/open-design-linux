@@ -61,7 +61,8 @@ the daemon time out — see upstream `tools/pack/README.md`).
 
 ## Build triggers
 
-- **Scheduled**: daily at 04:00 UTC — picks up the newest upstream release.
+- **Scheduled**: daily at 04:00 UTC — builds when the latest upstream release
+  differs from the published Linux release or required release assets are missing.
 - **Manual**: *Actions → Build Open Design Linux → Run workflow*, with an
   optional upstream tag or branch in `upstream_ref` (empty = latest release
   tag).

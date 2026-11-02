@@ -36,15 +36,21 @@ env:
   NAMESPACE: linux
 
 jobs:
-  build:
-    name: Build linux x64 AppImage
+  check:
+    name: Check upstream release
     runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.ref.outputs.ref }}
+      version: ${{ steps.ref.outputs.version }}
+      build: ${{ steps.ref.outputs.build }}
     steps:
       - name: Resolve upstream ref
         id: ref
         env:
           GH_TOKEN: ${{ github.token }}
           UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           if [[ -n "$UPSTREAM_REF" ]]; then
@@ -55,13 +61,33 @@ jobs:
           version="${ref#open-design-v}"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Building upstream ref: $ref (version $version)"
+          build=true
+          if [[ "$EVENT_NAME" == schedule ]] && \
+            release="$(gh release view "$RELEASE_TAG" --json name,body,assets 2>/dev/null)" && \
+            jq -e --arg version "$version" --arg ref "$ref" --arg repo "$UPSTREAM_REPO" '
+              .name == ("Open Design Linux " + $version) and
+              (.body | contains("https://github.com/" + $repo + "/releases/tag/" + $ref)) and
+              ([.assets[].name] | (index("VERSION") != null and
+                index("Open-Design-linux-x64.AppImage") != null and
+                index("open-design-icon.png") != null))
+            ' <<< "$release" >/dev/null; then
+            build=false
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Upstream ref: $ref (version $version); build: $build"
+
+  build:
+    name: Build linux x64 AppImage
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
 
       - name: Checkout upstream source
         uses: actions/checkout@v6.0.2
         with:
           repository: ${{ env.UPSTREAM_REPO }}
-          ref: ${{ steps.ref.outputs.ref }}
+          ref: ${{ needs.check.outputs.ref }}
           fetch-depth: 1
 
       - name: Checkout CI repo (patches)
@@ -112,7 +138,7 @@ jobs:
 
       - name: Build AppImage
         env:
-          VERSION: ${{ steps.ref.outputs.version }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
           pnpm exec tools-pack linux build \
@@ -159,6 +185,7 @@ jobs:
           curl -fsSL --retry 5 --retry-delay 2 -o "$appimagetool" \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x "$appimagetool"
+          chmod -R a+rX "$tree"
           rm -f "$appimage"
           "$appimagetool" --appimage-extract-and-run --no-appstream "$tree" "$appimage"
           rm -rf "$RUNNER_TEMP/trim"
@@ -166,7 +193,7 @@ jobs:
 
       - name: Collect artifacts
         env:
-          VERSION: ${{ steps.ref.outputs.version }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -183,7 +210,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Open-Design-linux-x64-${{ steps.ref.outputs.version }}
+          name: Open-Design-linux-x64-${{ needs.check.outputs.version }}
           path: dist/
           retention-days: 14
           if-no-files-found: error
@@ -194,8 +221,8 @@ jobs:
           # The checkout's git remote points at the upstream repo; pin gh to
           # this repository for release operations.
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ steps.ref.outputs.version }}
-          REF: ${{ steps.ref.outputs.ref }}
+          VERSION: ${{ needs.check.outputs.version }}
+          REF: ${{ needs.check.outputs.ref }}
         run: |
           set -euo pipefail
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
