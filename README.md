@@ -53,6 +53,12 @@ First launch can take ~60 seconds because the AppImage self-extracts to
 `/tmp` (a ~2 GB tree; `--appimage-extract-and-run`; direct FUSE mounts make
 the daemon time out — see upstream `tools/pack/README.md`).
 
+## RPM packages
+
+This repo publishes the AppImage only. If your distro takes RPM packages
+instead, get one from the fork:
+[pixel3design-hub/open-design-linux](https://github.com/pixel3design-hub/open-design-linux).
+
 ## Uninstall
 
 ```bash
